@@ -1,8 +1,9 @@
-﻿from itertools import chain
-from itertools import product
+﻿from itertools import chain, product
 import copy
+import time
 
 pool = {}
+proof = {}
 
 def comb(iterable, r):
     # combinations('ABCD', 2) --> AB AC AD BC BD CD
@@ -11,7 +12,7 @@ def comb(iterable, r):
     n = len(pool)
     if r > n:
         return
-    indices = range(r)
+    indices = list(range(r))
     yield list(pool[i] for i in indices)
     while True:
         for i in reversed(range(r)):
@@ -42,19 +43,18 @@ def genPool(S):
         system.append(Sequent(i[0],i[1]))
     return system
 
-
 class Sequent:
     def __init__(self, ante, succ):
-    	self.ante = ante
-    	self.succ = succ
+        self.ante = ante
+        self.succ = succ
         self.cache = []
         for wff1 in ante:  #waiting for another solution
             self.cache.append(wff1)
         for wff2 in succ:
             self.cache.append(wff2)
         self.wffs = [wff for wff in self.cache]
-    	if any(not (isinstance(c, Formula)) for c in self.wffs):
-    		raise AxiomException('Badly formed Sequent')
+        if any(not (isinstance(c, Formula)) for c in self.wffs):
+            raise AxiomException('Badly formed Sequent')
 
     def __str__(self):
         return "Sequent({0!s}, {1!s})".format(self.ante, self.succ)
@@ -97,22 +97,22 @@ class Sequent:
             if not flag:
                 clean.append(sub)
         return clean
-		
+        
 class Formula:
     def __init__(self):
         pass
 
 class Atom(Formula):
     def __init__(self, literal):
-    	self.literal = literal
+        self.literal = literal
         self.key = 'Atom'
-    	Formula.__init__(self)
+        Formula.__init__(self)
 
     def __str__(self):
-    	return "{0!s}".format(self.literal)
+        return "{0!s}".format(self.literal)
 
     def __repr__(self):
-    	return str(self)
+        return str(self)
 
     def __eq__(self, other):
         if not isinstance(other, Atom):
@@ -123,7 +123,7 @@ class Atom(Formula):
         return hash(str(self))
 
     def extractSubs(self):
-    	return [self]
+        return [self]
 
 class And(Formula):
     """
@@ -191,7 +191,7 @@ class Or(Formula):
         disjuncts = [d for d in disjuncts1 if not isinstance(d, bool)]
 
         if any(not (isinstance(c, Formula)) for c in disjuncts):
-            print disjuncts
+            print(disjuncts)
             raise AxiomException('Badly formed Or')
         self.disjuncts = disjuncts
         self.key = 'Or'
@@ -235,7 +235,7 @@ class Not(Formula):
 
     def __init__(self, formula):
         if not isinstance(formula, Formula):
-            print "BAD:", formula
+            print("BAD:", formula)
             raise AxiomException('Badly formed Not:' + str(formula))
         self.formula = formula
         self.key = 'Not'
@@ -339,8 +339,9 @@ def haveCommon(list1, list2):
     return False, None
 
 def haveOneDifference(list1, list2): #duplicate sensible
-    if len(list1) != len(list2):
-        return False, None
+    gap = len(list1) - len(list2)
+    if gap != 0:
+        return False, gap
     counter = 0
     for e in list1:
         if e not in list2:
@@ -431,14 +432,25 @@ def and_left(upper, lower):
         return False
     andInfo = haveOneDifference(upper.ante, lower.ante)
     if not andInfo[0]:
+        if andInfo[1] != 1:
+            return False
+        if not set(lower.ante) < set(upper.ante):
+            return False
+        potential_aux = set(upper.ante) - set(lower.ante)
+        auxiliary = list(potential_aux)[0]
+        for wff in lower.ante:
+            if isinstance(wff, And):
+                if auxiliary in wff.conjuncts:
+                    return True
         return False
-    auxiliary = andInfo[1]
-    principal = andInfo[2]
-    if not isinstance(principal, And):
+    else:
+        auxiliary = andInfo[1]
+        principal = andInfo[2]
+        if not isinstance(principal, And):
+            return False
+        if auxiliary in principal.conjuncts:
+            return True
         return False
-    if auxiliary in principal.conjuncts:
-        return True
-    return False
 
 def and_right(upper1, upper2, lower):  #conjuncts formation sensible
     if set(upper1.ante) != set(upper2.ante) or \
@@ -446,14 +458,30 @@ def and_right(upper1, upper2, lower):  #conjuncts formation sensible
         return False
     upperInfo = haveOneDifference(upper1.succ, upper2.succ)
     andInfo = haveOneDifference(upper1.succ, lower.succ)
-    if upperInfo[0] != True or andInfo[0] != True:
+    if not upperInfo[0]:
         return False
-    principal = andInfo[2]
-    if not isinstance(principal, And):
+    if not andInfo[0]:
+        if andInfo[1] != 1:
+            return False
+        if not set(lower.succ) < set(upper1.succ) or \
+        not set(lower.succ) < set(upper2.succ):
+            return False
+        potential_aux1 = set(upper1.succ) - set(lower.succ)
+        potential_aux2 = set(upper2.succ) - set(lower.succ)
+        auxiliary1 = list(potential_aux1)[0]
+        auxiliary2 = list(potential_aux2)[0]
+        for wff in lower.succ:
+            if isinstance(wff, And):
+                if auxiliary1 in wff.conjuncts and auxiliary2 in wff.conjuncts:
+                    return True
         return False
-    if And(upperInfo[1], upperInfo[2]) == principal:
-        return True
-    return False
+    else:
+        principal = andInfo[2]
+        if not isinstance(principal, And):
+            return False
+        if upperInfo[1] in principal.conjuncts and upperInfo[2] in principal.conjuncts:
+            return True
+        return False
 
 def or_left(upper1, upper2, lower):  #disjuncts formation sensible
     if set(upper1.succ) != set(upper2.succ) or \
@@ -461,31 +489,71 @@ def or_left(upper1, upper2, lower):  #disjuncts formation sensible
         return False
     upperInfo = haveOneDifference(upper1.ante, upper2.ante)
     orInfo = haveOneDifference(upper1.ante, lower.ante)
-    if upperInfo[0] != True or orInfo[0] != True:
+    if not upperInfo[0]:
         return False
-    principal = orInfo[2]
-    if not isinstance(principal, Or):
+    if not orInfo[0]:
+        if orInfo[1] != 1:
+            return False
+        if not set(lower.ante) < set(upper1.ante) or \
+        not set(lower.ante) < set(upper2.ante):
+            return False
+        potential_aux1 = set(upper1.ante) - set(lower.ante)
+        potential_aux2 = set(upper2.ante) - set(lower.ante)
+        auxiliary1 = list(potential_aux1)[0]
+        auxiliary2 = list(potential_aux2)[0]
+        for wff in lower.ante:
+            if isinstance(wff, Or):
+                if auxiliary1 in wff.disjuncts and auxiliary2 in wff.disjuncts:
+                    return True
         return False
-    if Or(upperInfo[1], upperInfo[2]) == principal:
-        return True
-    return False
+    else: 
+        principal = orInfo[2]
+        if not isinstance(principal, Or):
+            return False
+        if upperInfo[1] in principal.disjuncts and upperInfo[2] in principal.disjuncts:
+            return True
+        return False
 
 def or_right(upper, lower):
     if set(upper.ante) != set(lower.ante):
         return False
     orInfo = haveOneDifference(upper.succ, lower.succ)
     if not orInfo[0]:
+        if orInfo[1] != 1:
+            return False
+        if not set(lower.succ) < set(upper.succ):
+            return False
+        potential_aux = set(upper.succ) - set(lower.succ)
+        auxiliary = list(potential_aux)[0]
+        for wff in lower.succ:
+            if isinstance(wff, Or):
+                if auxiliary in wff.disjuncts:
+                    return True
         return False
-    auxiliary = orInfo[1]
-    principal = orInfo[2]
-    if not isinstance(principal, Or):
+    else:
+        auxiliary = orInfo[1]
+        principal = orInfo[2]
+        if not isinstance(principal, Or):
+            return False
+        if auxiliary in principal.disjuncts:
+            return True
         return False
-    if auxiliary in principal.disjuncts:
-        return True
-    return False
 
 # def Implies_left(upper1, upper2, lower):
 #     pass
+
+def isInit(seq):
+    if set(seq.ante) == set(seq.succ):
+        return True
+    return False
+
+def genProof(goal, pool):
+    global proof
+    if not isInit(goal):
+        proof[goal] = pool[goal]
+        for g in proof[goal][0]:
+            genProof(g, pool)
+
 
 def findProof(proven, potential, goal):
     global pool
@@ -494,62 +562,64 @@ def findProof(proven, potential, goal):
         for upper in proven:
             if weakening_left(upper, lower):
                 S.append(lower)
-                pool[upper] = lower, 'weakening_left'
+                pool[lower] = [upper], 'weakening_left'
                 # print 'trying weakening_left on ({0!s}, {1!s})'.format(str(upper),str(lower))
                 break
             if weakening_right(upper, lower):
                 S.append(lower)
-                pool[upper] = lower, 'weakening_right'
+                pool[lower] = [upper], 'weakening_right'
                 # print 'trying weakening_right on ({0!s}, {1!s})'.format(str(upper),str(lower))
                 break
             if not_left(upper, lower):
                 S.append(lower)
-                pool[upper] = lower, 'not_left'
+                pool[lower] = [upper], 'not_left'
                 break
             if not_right(upper, lower):
                 S.append(lower)
-                pool[upper] = lower, 'not_right'
+                pool[lower] = [upper], 'not_right'
                 break
             if and_left(upper, lower):
                 S.append(lower)
-                pool[upper] = lower, 'and_left'
+                pool[lower] = [upper], 'and_left'
                 break
             if or_right(upper, lower):
                 S.append(lower)
-                pool[upper] = lower, 'or_right'
+                pool[lower] = [upper], 'or_right'
                 break
         if lower in S:
             continue
         for uppers in list(comb(proven, 2)):
-            if cut(uppers[0], uppers[1], lower) or \
-            cut(uppers[1], uppers[0], lower):
-                S.append(lower)
-                pool[tuple(uppers)] = lower, 'cut'
-                # print 'trying cut on ({0!s}, {1!s})'.format(str(uppers[0]),str(uppers[1]),str(lower))
-                break
+            # if cut(uppers[0], uppers[1], lower) or \
+            # cut(uppers[1], uppers[0], lower):
+            #     S.append(lower)
+            #     pool[tuple(uppers)] = lower, 'cut'
+            #     # print 'trying cut on ({0!s}, {1!s})'.format(str(uppers[0]),str(uppers[1]),str(lower))
+            #     break
             if and_right(uppers[0], uppers[1], lower) or \
             and_right(uppers[1], uppers[0], lower):
                 S.append(lower)
-                pool[tuple(uppers)] = lower, 'and_right'
+                pool[lower] = tuple(uppers), 'and_right'
                 break
             if or_left(uppers[0], uppers[1], lower) or \
             or_left(uppers[1], uppers[0], lower):
                 S.append(lower)
-                pool[tuple(uppers)] = lower, 'or_left'
+                pool[lower] = tuple(uppers), 'or_left'
                 break
     if not S:
         # print 'unprovable, depth: {0!s}'.format(str(depth))
-        print 'result : unprovable'
+        print('result : unprovable')
         return
     if goal in S:
-        print 'result : provable'
-        return S
+        print('result : provable')
+        # print(pool)
+        genProof(goal, pool)
+        return proof
     potential = set(potential) - set(S)
     proven = set(proven) | set(S)
     return findProof(proven, potential, goal)
 
 def check(sequent):
-    print 'checking provability: {0!s}'.format(sequent)
+    print('checking provability: {0!s}'.format(sequent))
     S1 = list(genPool(sequent.extractSubs()))
     S0 = genInits(sequent.extractSubs())
     potential = set(S1) - set(S0)
@@ -568,10 +638,18 @@ test1 = Sequent([Atom('A')],[test,Atom('A')])
 
 ttest = Sequent([And(Atom('A'),Atom('B'))],[And(Atom('A'),Atom('B'))])
 
+t0 = Sequent([],[And(Atom('A'),Not(Atom('A')))])
+
 t1 = Sequent([Atom('A')],[Not(Atom('A'))])
 
-t2 = Sequent([],[And(Atom('A'),Not(Atom('A')))])
+t2 = Sequent([And(Atom('A'),Not(Atom('A')))],[])
 
-print check(t2)
+t3 = Sequent([],[Or(Atom('A'),Not(Atom('A')))])
 
+t4 = Sequent([],[Not(Atom('A')), Or(Not(Atom('B')), Atom('A'))])
+
+time_start = time.time()
+print(check(t4))
+time_end = time.time()
+print('time: {0}'.format(time_end - time_start))
 
