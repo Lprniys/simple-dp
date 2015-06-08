@@ -54,7 +54,7 @@ class Sequent:
             self.cache.append(wff2)
         self.wffs = [wff for wff in self.cache]
         if any(not (isinstance(c, Formula)) for c in self.wffs):
-            raise AxiomException('Badly formed Sequent')
+            return 'Badly formed Sequent'
 
     def __str__(self):
         return "Sequent({0!s}, {1!s})".format(self.ante, self.succ)
@@ -140,7 +140,7 @@ class And(Formula):
             return
         conjuncts = [c for c in conjuncts1 if not isinstance(c, bool)]
         if any(not (isinstance(c, Formula)) for c in conjuncts):
-            raise AxiomException('Badly formed And')
+            return 'Badly formed And'
         self.conjuncts = conjuncts
         self.key = 'And'
         Formula.__init__(self)
@@ -192,7 +192,7 @@ class Or(Formula):
 
         if any(not (isinstance(c, Formula)) for c in disjuncts):
             print(disjuncts)
-            raise AxiomException('Badly formed Or')
+            return 'Badly formed Or'
         self.disjuncts = disjuncts
         self.key = 'Or'
         Formula.__init__(self)
@@ -236,7 +236,7 @@ class Not(Formula):
     def __init__(self, formula):
         if not isinstance(formula, Formula):
             print("BAD:", formula)
-            raise AxiomException('Badly formed Not:' + str(formula))
+            return 'Badly formed Not:' + str(formula)
         self.formula = formula
         self.key = 'Not'
         Formula.__init__(self)
@@ -296,7 +296,7 @@ class Implies(Formula):
 
     def __init__(self, hyp, con):
         if any(not isinstance(c, Formula) for c in [hyp, con]):
-            raise AxiomException('Badly formed Implies')
+            return 'Badly formed Implies'
         self.hyp, self.con = hyp, con
         self.key = 'Implies'
         Formula.__init__(self)
@@ -608,11 +608,13 @@ def findProof(proven, potential, goal):
     if not S:
         # print 'unprovable, depth: {0!s}'.format(str(depth))
         print('result : unprovable')
+        print('Proof:')
         return
     if goal in S:
         print('result : provable')
         # print(pool)
         genProof(goal, pool)
+        print('Proof:')
         return proof
     potential = set(potential) - set(S)
     proven = set(proven) | set(S)
@@ -626,13 +628,13 @@ def check(sequent):
     proven = set(genInits(sequent.extractSubs()))
     return findProof(proven, potential, sequent)
 
-test = Implies(Or((Atom('A')),Atom('B')),And(Atom('B'),Atom('C')))
+# test = Implies(Or((Atom('A')),Atom('B')),And(Atom('B'),Atom('C')))
 
-testt = Implies(Or((Atom('A')),Atom('C')),And(Atom('B'),Atom('C')))
+# testt = Implies(Or((Atom('A')),Atom('C')),And(Atom('B'),Atom('C')))
 
-tests = Sequent([test],[])
+# tests = Sequent([test],[])
 
-test1 = Sequent([Atom('A')],[test,Atom('A')])
+# test1 = Sequent([Atom('A')],[test,Atom('A')])
 
 # print test1.extractSubs()
 
@@ -648,8 +650,11 @@ t3 = Sequent([],[Or(Atom('A'),Not(Atom('A')))])
 
 t4 = Sequent([],[Not(Atom('A')), Or(Not(Atom('B')), Atom('A'))])
 
+t5 = Sequent([],[Not(Atom('A')),Not(Not(Atom('A')))])
+
 time_start = time.time()
 print(check(t4))
 time_end = time.time()
-print('time: {0}'.format(time_end - time_start))
+print('time cost: {0}'.format(time_end - time_start))
 
+# print(genPool(Sequent([Atom('A')],[Atom('B'), Atom('C')]).extractSubs()))
