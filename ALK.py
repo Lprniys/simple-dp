@@ -43,7 +43,7 @@ def genPool(S):
         system.append(Sequent(i[0],i[1]))
     return system
 
-class Sequent:
+class Sequent(object):
     def __init__(self, ante, succ):
         self.ante = ante
         self.succ = succ
@@ -98,7 +98,7 @@ class Sequent:
                 clean.append(sub)
         return clean
         
-class Formula:
+class Formula(object):
     def __init__(self):
         pass
 
@@ -242,31 +242,7 @@ class Not(Formula):
         Formula.__init__(self)
 
     def negate(self):
-        """
-        Pushes the negation through self.formula to remove the not.
-        """
-        # if isinstance(self.formula, terms.TermComparison):
-        #     return terms.TermComparison(self.formula.term1,
-        #                                 terms.comp_negate(self.formula.comp),
-        #                                 self.formula.term2)
-
-        if isinstance(self.formula, And):
-            return Or(*[Not(a) for a in self.formula.conjuncts])
-
-        elif isinstance(self.formula, Or):
-            return And(*[Not(a) for a in self.formula.disjuncts])
-
-        elif isinstance(self.formula, Not):
-            return self.formula.formula
-
-        elif isinstance(self.formula, Implies):
-            return And(self.formula.hyp, Not(self.formula.con))
-
-        elif isinstance(self.formula, Univ):
-            return Exist(self.formula.vars, Not(self.formula.formula))
-
-        elif isinstance(self.formula, Exist):
-            return Univ(self.formula.vars, Not(self.formula.formula))
+        pass
 
     def __str__(self):
         return "Not({0!s})".format(self.formula)
@@ -328,8 +304,11 @@ class Implies(Formula):
 def genInits(subs):
     inits = []
     for sub in subs:
-        if isinstance(sub, Atom):
+        if isinstance(sub, Formula):
             inits.append(Sequent([sub],[sub]))
+    more = copy.deepcopy(inits)
+    for m in more:
+        inits.append(m)
     return inits
 
 def haveCommon(list1, list2):
@@ -453,6 +432,15 @@ def and_left(upper, lower):
         return False
 
 def and_right(upper1, upper2, lower):  #conjuncts formation sensible
+    if upper1 == upper2:
+        principleInfo = haveOneDifference(upper1.succ, lower.succ)
+        if principleInfo[0]:
+            principal = principleInfo[2]
+            if isinstance(principal, And):
+                if principal.conjuncts[0] in upper1.succ and \
+                principal.conjuncts[1] in upper1.succ:
+                    return True
+        return False
     if set(upper1.ante) != set(upper2.ante) or \
     set(upper1.ante) != set(lower.ante):
         return False
@@ -484,6 +472,14 @@ def and_right(upper1, upper2, lower):  #conjuncts formation sensible
         return False
 
 def or_left(upper1, upper2, lower):  #disjuncts formation sensible
+    if upper1 == upper2:
+        principleInfo = haveOneDifference(upper1.ante, lower.ante)
+        if principleInfo[0]:
+            principal = principleInfo[2]
+            if isinstance(principal, Or):
+                if principal.disjuncts[0] in upper1.ante and \
+                principal.disjuncts[1] in upper1.ante:
+                    return True
     if set(upper1.succ) != set(upper2.succ) or \
     set(upper1.succ) != set(lower.succ):
         return False
@@ -538,9 +534,6 @@ def or_right(upper, lower):
         if auxiliary in principal.disjuncts:
             return True
         return False
-
-# def Implies_left(upper1, upper2, lower):
-#     pass
 
 def isInit(seq):
     if set(seq.ante) == set(seq.succ):
@@ -622,39 +615,40 @@ def findProof(proven, potential, goal):
 
 def check(sequent):
     print('checking provability: {0!s}'.format(sequent))
+    if isInit(sequent):
+        return 'trivial'
     S1 = list(genPool(sequent.extractSubs()))
     S0 = genInits(sequent.extractSubs())
     potential = set(S1) - set(S0)
-    proven = set(genInits(sequent.extractSubs()))
+    proven = S0
     return findProof(proven, potential, sequent)
 
-# test = Implies(Or((Atom('A')),Atom('B')),And(Atom('B'),Atom('C')))
 
-# testt = Implies(Or((Atom('A')),Atom('C')),And(Atom('B'),Atom('C')))
+ttest = Sequent([And(Atom('A'),Atom('B'))],[And(Atom('A'),Atom('B'))]) #trivial
 
-# tests = Sequent([test],[])
-
-# test1 = Sequent([Atom('A')],[test,Atom('A')])
-
-# print test1.extractSubs()
-
-ttest = Sequent([And(Atom('A'),Atom('B'))],[And(Atom('A'),Atom('B'))])
-
-t0 = Sequent([],[And(Atom('A'),Not(Atom('A')))])
+t0 = Sequent([],[Not(Atom('A')),Not(Not(Atom('A')))]) #Double Negation
 
 t1 = Sequent([Atom('A')],[Not(Atom('A'))])
 
-t2 = Sequent([And(Atom('A'),Not(Atom('A')))],[])
+t2 = Sequent([And(Atom('A'),Not(Atom('A')))],[]) #void
 
-t3 = Sequent([],[Or(Atom('A'),Not(Atom('A')))])
+t3 = Sequent([],[And(Atom('A'),Not(Atom('A')))]) #consistency
 
-t4 = Sequent([],[Not(Atom('A')), Or(Not(Atom('B')), Atom('A'))])
+t4 = Sequent([],[Or(Atom('A'),Not(Atom('A')))])
 
-t5 = Sequent([],[Not(Atom('A')),Not(Not(Atom('A')))])
+t5 = Sequent([],[Not(Atom('A')), Or(Not(Atom('B')), Atom('A'))]) #A->B->A
+
+t6 = Sequent([Or(Not(Atom('A')), Atom('B')), Atom('A')],[Atom('B')]) #Modus Ponens
+
+t7 = Sequent([Atom('A')],[Atom('B')]) #meaningless
+
+t8 = Sequent([Atom('A'),Not(Atom('A'))],[Atom('evil')]) #absurd
+
+t9 = Sequent([Not(Atom('A')),Atom('B')],[Atom('A')]) #(A->B)->A
+
+t10 = Sequent([Or(Atom('A'),Atom('A'))],[Atom('A')]) #duplicate
 
 time_start = time.time()
-print(check(t4))
+print(check(t8))
 time_end = time.time()
 print('time cost: {0}'.format(time_end - time_start))
-
-# print(genPool(Sequent([Atom('A')],[Atom('B'), Atom('C')]).extractSubs()))
